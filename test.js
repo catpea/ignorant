@@ -3,7 +3,6 @@ import { suite, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { transform } from './index.js';
 import query from './query.js';
-suite('Transform Tests', () => {
   describe('friendly code structure', () => {
     it('should be well ordered', async () => {
       const code = `
@@ -15,7 +14,7 @@ suite('Transform Tests', () => {
           d(){ console.log('b'); }
           b(){ console.log('d intermediate'); }
         }
-        export class Hominid extends Animal {
+        export class Hominid extends Ape {
           e(){ console.log('b'); }
           b(){ console.log('d intermediate'); }
         }
@@ -29,8 +28,8 @@ suite('Transform Tests', () => {
       `;
       const transformed = await transform(code);
       const actual = query(transformed).ClassDeclaration.MethodDefinition.name();
+      console.log(transformed)
       console.log(actual, [ 'a', 'b', 'c', 'd', 'e' ])
       assert.deepEqual(actual, [ 'a', 'b', 'c', 'd', 'e' ], 'a b define purpose, then with c we begin at the base, and move up one by one.');
     });
   });
-});

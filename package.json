@@ -1,26 +1,43 @@
 {
   "type": "module",
   "name": "ignorant",
-  "description": "Build system that inlines Object extends, creating objects without inheritance",
+  "description": "Pre-compile OOP inheritance into standalone, dependency-free classes. Flatten class hierarchies at build time for simplified distribution.",
   "version": "1.0.1",
   "main": "index.js",
   "module": "index.js",
+  "bin": {
+    "ignorant": "./cli.js"
+  },
   "scripts": {
     "save": "git add .; git commit -m 'Updated Release'; npm version patch; npm publish; git push --follow-tags;",
     "test": "node test",
-    "xxxprepublishOnly": "npm test"
+    "prepublishOnly": "npm test"
   },
-  "keywords": [],
+  "keywords": [
+    "inheritance",
+    "class",
+    "flatten",
+    "inline",
+    "build-tool",
+    "ast",
+    "compiler",
+    "oop",
+    "extends",
+    "transform",
+    "standalone",
+    "dependency-free",
+    "code-generation"
+  ],
   "author": "catpea (https://github.com/catpea)",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/catpea/beamables.git"
+    "url": "git+https://github.com/catpea/ignorant.git"
   },
   "bugs": {
-    "url": "https://github.com/catpea/beamables/issues"
+    "url": "https://github.com/catpea/ignorant/issues"
   },
-  "homepage": "https://catpea.github.io/beamables",
+  "homepage": "https://catpea.github.io/ignorant",
   "funding": {
     "type": "github",
     "url": "https://github.com/sponsors/catpea"

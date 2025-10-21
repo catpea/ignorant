@@ -1,6 +1,8 @@
 import * as acorn from 'acorn';
 import * as walk from "acorn-walk"
 
+// prototype system not core part of this package
+
 class QueryBuilder {
   constructor(code) {
     this.code = code;
