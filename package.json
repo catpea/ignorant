@@ -2,7 +2,7 @@
   "type": "module",
   "name": "ignorant",
   "description": "Build system that inlines Object extends, creating objects without inheritance",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "index.js",
   "module": "index.js",
   "scripts": {
@@ -30,5 +30,4 @@
     "prettier": "^3.6.2",
     "haggis": "^1.0.1"
   }
-
 }
