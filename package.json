@@ -1,0 +1,34 @@
+{
+  "type": "module",
+  "name": "ignorant",
+  "description": "Build system that inlines Object extends, creating objects without inheritance",
+  "version": "1.0.0",
+  "main": "index.js",
+  "module": "index.js",
+  "scripts": {
+    "save": "git add .; git commit -m 'Updated Release'; npm version patch; npm publish; git push --follow-tags;",
+    "test": "node test",
+    "xxxprepublishOnly": "npm test"
+  },
+  "keywords": [],
+  "author": "catpea (https://github.com/catpea)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/catpea/beamables.git"
+  },
+  "bugs": {
+    "url": "https://github.com/catpea/beamables/issues"
+  },
+  "homepage": "https://catpea.github.io/beamables",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/catpea"
+  },
+  "dependencies": {
+    "acorn": "^8.15.0",
+    "prettier": "^3.6.2",
+    "haggis": "^1.0.1"
+  }
+
+}
