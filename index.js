@@ -115,7 +115,7 @@ function mergeClasses(code, options = {}) {
             // Get all inherited members
             const inheritedMembers = [];
             if (classNode.superClass && classNode.superClass.type === 'Identifier') {
-                inheritedMembers.push(...collectMembers(classNode.superClass.name));
+                inheritedMembers.push(...collectMembers(classNode.superClass.name) );
             }
 
             // Build the new class without extends
@@ -184,6 +184,43 @@ function generateClass(classNode, inheritedMembers, originalCode) {
 
     result += '}';
     return result;
+}
+
+function extractClasses(code){
+  const result = [];
+  // entry format:  {className: 'Pulse', content: 'export default class Pulse extends Subscriptions...'}
+
+  const ast = acorn.parse(code, {
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+    checkPrivateFields: false
+  });
+
+  for (const node of ast.body) {
+    let classNode = null;
+
+    // Check if it's a class declaration (with or without export)
+    if (node.type === 'ClassDeclaration') {
+      classNode = node;
+    } else if (node.type === 'ExportDefaultDeclaration' && node.declaration.type === 'ClassDeclaration') {
+      classNode = node.declaration;
+    } else if (node.type === 'ExportNamedDeclaration' && node.declaration && node.declaration.type === 'ClassDeclaration') {
+      classNode = node.declaration;
+    }
+
+    if (classNode && classNode.id) {
+      const className = classNode.id.name;
+      const classCode = code.substring(classNode.start, classNode.end);
+      const content = 'export default ' + classCode;
+
+      result.push({
+        className,
+        content
+      });
+    }
+  }
+
+  return result;
 }
 
 // Get a unique identifier for a member (to detect overrides)
@@ -323,6 +360,7 @@ function reorderClass(classNode, originalCode) {
     return result;
 }
 
+// Transform accepts string as input, and returns a string as output
 async function transform(code) {
     const merged = mergeClasses(code, {excludeIntermediate: true});
     const ordered = orderCode(merged);
@@ -330,4 +368,4 @@ async function transform(code) {
     return formatted;
 }
 
-export { mergeClasses, transform };
+export { mergeClasses, transform, extractClasses };

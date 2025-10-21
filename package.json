@@ -27,7 +27,8 @@
   },
   "dependencies": {
     "acorn": "^8.15.0",
-    "prettier": "^3.6.2",
-    "haggis": "^1.0.1"
+    "acorn-walk": "^8.3.4",
+    "haggis": "^1.0.1",
+    "prettier": "^3.6.2"
   }
 }

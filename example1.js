@@ -1,13 +1,3 @@
-import fs from 'fs';
-
-function test (){
-  console.log('works great!')
-}
-
-export function test1 (){
-  console.log('works great!')
-}
-
 class Symbols {
    static Access = Symbol('I.am.Signal');
    static Value  = Symbol('Signal.setValue');
@@ -42,7 +32,7 @@ class Subscriptions extends Collections {
   }
 }
 
-export default class Pulse extends Subscriptions {
+class Pulse extends Subscriptions {
   #value;
   #options;
 
@@ -50,10 +40,6 @@ export default class Pulse extends Subscriptions {
     super();
     this.#value = value;
     this.#options = options;
-  }
-
-  get options() {
-    return this.#options;
   }
 
   get value() {
@@ -65,12 +51,6 @@ export default class Pulse extends Subscriptions {
   }
 
   // raw is used for assignament and unrestricted access
-  get raw() {
-    return this.#value;
-  }
-  set raw(newValue) {
-    this.#value = newValue;
-  }
 
   get() {
     return this.#value;
@@ -81,14 +61,26 @@ export default class Pulse extends Subscriptions {
     this.#value = newValue;
     this.notify(this.#value);
   }
+
   subscribe(subscriber) {
+    //OVERLOADS
     const hasValue = this.#value !== null && this.#value !== undefined;
     if (hasValue) subscriber(this.#value);
     const response = super.subscribe(subscriber);
     return response;
   }
+
   dispose() {
     super.dispose();
   }
 
+}
+
+class Signal extends Subscriptions {
+  map(fn){
+    console.log('this would map the signal with a user funcion and return a new signal')
+  }
+  filter(fn){
+    console.log('this would map the signal with a user funcion and return a new signal')
+  }
 }
