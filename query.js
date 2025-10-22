@@ -81,12 +81,38 @@ class QueryBuilder {
     return proxy;
   }
 
-
   list(chain) {
+    const results = [];
+    if (chain.length === 0) return results;
+
+    // If single query, just find all matching nodes
+    if (chain.length === 1) {
+      const targetType = chain[0].type;
+      walk.full(this.ast, (node) => {
+        if (node.type === targetType) {
+          results.push(node);
+        }
+      });
+      return results;
+    }
+
+    // Multi-level query - find nested matches
+    const targetType = chain[0].type;
+    walk.full(this.ast, (node) => {
+      if (node.type === targetType) {
+        // Start walking from this node through the chain
+        const matches = findInChain(node, chain.slice(1));
+        if (matches.length > 0) {
+          results.push(...matches);
+        }
+      }
+    });
+
+    return results;
+  }
+  list1(chain) {
      const results = [];
-
      if (chain.length === 0) return results;
-
      // If single query, just find all matching nodes
      if (chain.length === 1) {
        const targetType = chain[0].type;
@@ -97,10 +123,8 @@ class QueryBuilder {
        });
        return results;
      }
-
      // Multi-level query - find nested matches
      const targetType = chain[0].type;
-
      walk.simple(this.ast, {
        [targetType](node) {
          // Start walking from this node through the chain
@@ -110,7 +134,6 @@ class QueryBuilder {
          }
        }
      });
-
      return results;
    }
 
@@ -136,31 +159,17 @@ class QueryBuilder {
      // Get the 'name' or 'key.name' from current nodes
      return this.list(this.queryChain).map(node => node.key?.name || node.name);
    }
-   prop(propertyName) {
-     // Navigate to a specific property
-     this.queryChain.push({
-       type: '__PROP__',
-       options: { property: propertyName }
-     });
-     return this;
-   }
 
-  query() {
+   // helpful litte map function
+  map(fn) {
     let chain = this.list(this.queryChain);
-    console.dir(chain)
+    return chain.map(fn);
+  }
+  get(prop) {
+    return this.list(this.queryChain);
   }
 
-  bork(name){
 
-    console.log('Given this code');
-    console.log(this.code);
-    console.log('And this query');
-    console.dir(this.queryChain);
-    console.log('it returns:');
-    let result = this.list(this.queryChain);
-    console.dir(result)
-
-  }
 }
 
 export default function main(code){
@@ -169,13 +178,39 @@ export default function main(code){
 
 
 // Helper: recursively search through remaining chain
+
+
 function findInChain(node, remainingChain) {
+  if (remainingChain.length === 0) {
+    return [node];
+  }
+  const results = [];
+  const targetType = remainingChain[0].type;
+
+  walk.full(node, (foundNode) => {
+    if (foundNode.type === targetType) {
+      if (remainingChain.length === 1) {
+        results.push(foundNode);
+      } else {
+        const deeper = findInChain(foundNode, remainingChain.slice(1));
+        results.push(...deeper);
+      }
+    }
+  });
+
+  return results;
+}
+
+
+
+function findInChain1(node, remainingChain) {
   if (remainingChain.length === 0) {
     return [node];
   }
 
   const results = [];
   const targetType = remainingChain[0].type;
+  // const keyName = remainingChain[0]?.options?.key;
 
   walk.simple(node, {
     [targetType](foundNode) {
@@ -184,6 +219,10 @@ function findInChain(node, remainingChain) {
         results.push(foundNode);
       } else {
         // Continue searching deeper
+
+        // const nextNode = keyName?foundNode[keyName]:foundNode;
+
+
         const deeper = findInChain(foundNode, remainingChain.slice(1));
         results.push(...deeper);
       }

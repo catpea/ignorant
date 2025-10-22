@@ -80,6 +80,34 @@ function mergeClasses(code, options = {}) {
         return members;
     }
 
+    // Function to collect constructor bodies from the inheritance chain
+    function collectConstructorBodies(className, visited = new Set()) {
+        if (visited.has(className)) return [];
+        visited.add(className);
+
+        const classNode = classMap.get(className);
+        if (!classNode) return [];
+
+        const constructorBodies = [];
+
+        // Collect parent constructors first (bottom-up approach)
+        if (classNode.superClass && classNode.superClass.type === 'Identifier') {
+            const parentConstructors = collectConstructorBodies(classNode.superClass.name, visited);
+            constructorBodies.push(...parentConstructors);
+        }
+
+        // Collect current class constructor body
+        const constructor = classNode.body.body.find(m => m.type === 'MethodDefinition' && m.kind === 'constructor');
+        if (constructor && constructor.value && constructor.value.body) {
+            constructorBodies.push({
+                body: constructor.value.body,
+                fromClass: className
+            });
+        }
+
+        return constructorBodies;
+    }
+
     // Transform each class
     const output = [];
     let lastEnd = 0;
@@ -118,6 +146,9 @@ function mergeClasses(code, options = {}) {
                 inheritedMembers.push(...collectMembers(classNode.superClass.name) );
             }
 
+            // Get all constructor bodies in the inheritance chain
+            const constructorBodies = collectConstructorBodies(className);
+
             // Build the new class without extends
             output.push(code.substring(lastEnd, nodeStart));
 
@@ -128,7 +159,7 @@ function mergeClasses(code, options = {}) {
                 output.push('export ');
             }
 
-            output.push(generateClass(classNode, inheritedMembers, code));
+            output.push(generateClass(classNode, inheritedMembers, constructorBodies, code));
             lastEnd = nodeEnd;
         }
     }
@@ -137,17 +168,39 @@ function mergeClasses(code, options = {}) {
     return output.join('');
 }
 
-function generateClass(classNode, inheritedMembers, originalCode) {
+function generateClass(classNode, inheritedMembers, constructorBodies, originalCode) {
     const className = classNode.id ? classNode.id.name : 'AnonymousClass';
     let result = `class ${className} {\n`;
 
-    // Add constructor and remove super() calls
+    // Merge constructors from the inheritance chain
     const constructor = classNode.body.body.find(m => m.type === 'MethodDefinition' && m.kind === 'constructor');
-    if (constructor) {
-        const constructorCode = originalCode.substring(constructor.start, constructor.end);
-        // Remove super() calls - simplest approach
-        const cleanedConstructor = constructorCode.replace(/super\([^)]*\);?\s*/g, '');
-        result += '    ' + cleanedConstructor + '\n';
+    if (constructor || constructorBodies.length > 0) {
+        // Get the constructor parameters from the current class's constructor
+        let params = '';
+        if (constructor && constructor.value && constructor.value.params) {
+            params = originalCode.substring(constructor.value.params[0]?.start || constructor.value.body.start,
+                                          constructor.value.params[constructor.value.params.length - 1]?.end || constructor.value.body.start);
+            // If we have params, extract them properly
+            if (constructor.value.params.length > 0) {
+                const paramsStart = constructor.value.params[0].start;
+                const paramsEnd = constructor.value.params[constructor.value.params.length - 1].end;
+                params = originalCode.substring(paramsStart, paramsEnd);
+            }
+        }
+
+        result += `    constructor(${params}) {\n`;
+
+        // Add all constructor bodies in order (from base class to derived class)
+        for (const { body } of constructorBodies) {
+            // Extract the body statements, removing the braces and super() calls
+            const bodyCode = originalCode.substring(body.start + 1, body.end - 1);
+            const cleanedBody = bodyCode.replace(/super\([^)]*\);?\s*/g, '');
+            if (cleanedBody.trim()) {
+                result += '        ' + cleanedBody.trim() + '\n';
+            }
+        }
+
+        result += '    }\n';
     }
 
     // Add own members (everything except constructor)
@@ -244,8 +297,8 @@ function getMemberId(member, originalCode) {
 }
 
 // Format code using prettier
-async function formatCode(codeStr) {
-    return await prettier.format(codeStr, { semi: false, parser: "babel" });
+export async function formatCode(codeStr) {
+    return await prettier.format(codeStr.trim(), { semi: false, parser: "babel" });
 }
 
 // Order class members according to JavaScript conventions
