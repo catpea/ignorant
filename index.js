@@ -96,11 +96,12 @@ function mergeClasses(code, options = {}) {
             constructorBodies.push(...parentConstructors);
         }
 
-        // Collect current class constructor body
+        // Collect current class constructor body and params
         const constructor = classNode.body.body.find(m => m.type === 'MethodDefinition' && m.kind === 'constructor');
         if (constructor && constructor.value && constructor.value.body) {
             constructorBodies.push({
                 body: constructor.value.body,
+                params: constructor.value.params,
                 fromClass: className
             });
         }
@@ -175,16 +176,18 @@ function generateClass(classNode, inheritedMembers, constructorBodies, originalC
     // Merge constructors from the inheritance chain
     const constructor = classNode.body.body.find(m => m.type === 'MethodDefinition' && m.kind === 'constructor');
     if (constructor || constructorBodies.length > 0) {
-        // Get the constructor parameters from the current class's constructor
+        // Find the first non-empty parameter list from top (derived class) to bottom (base class)
         let params = '';
-        if (constructor && constructor.value && constructor.value.params) {
-            params = originalCode.substring(constructor.value.params[0]?.start || constructor.value.body.start,
-                                          constructor.value.params[constructor.value.params.length - 1]?.end || constructor.value.body.start);
-            // If we have params, extract them properly
-            if (constructor.value.params.length > 0) {
-                const paramsStart = constructor.value.params[0].start;
-                const paramsEnd = constructor.value.params[constructor.value.params.length - 1].end;
+
+        // Start from the end of constructorBodies (which represents the topmost/derived class)
+        // and work backwards to find the first constructor with non-empty params
+        for (let i = constructorBodies.length - 1; i >= 0; i--) {
+            const { params: ctorParams } = constructorBodies[i];
+            if (ctorParams && ctorParams.length > 0) {
+                const paramsStart = ctorParams[0].start;
+                const paramsEnd = ctorParams[ctorParams.length - 1].end;
                 params = originalCode.substring(paramsStart, paramsEnd);
+                break;
             }
         }
 

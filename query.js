@@ -137,7 +137,7 @@ class QueryBuilder {
      return results;
    }
 
-
+   /// SEARCH/SELECT API
 
    // Alternative: return first match
    first() {
@@ -159,7 +159,6 @@ class QueryBuilder {
      // Get the 'name' or 'key.name' from current nodes
      return this.list(this.queryChain).map(node => node.key?.name || node.name);
    }
-
    // helpful litte map function
   map(fn) {
     let chain = this.list(this.queryChain);
@@ -179,7 +178,6 @@ export default function main(code){
 
 // Helper: recursively search through remaining chain
 
-
 function findInChain(node, remainingChain) {
   if (remainingChain.length === 0) {
     return [node];
@@ -192,37 +190,6 @@ function findInChain(node, remainingChain) {
       if (remainingChain.length === 1) {
         results.push(foundNode);
       } else {
-        const deeper = findInChain(foundNode, remainingChain.slice(1));
-        results.push(...deeper);
-      }
-    }
-  });
-
-  return results;
-}
-
-
-
-function findInChain1(node, remainingChain) {
-  if (remainingChain.length === 0) {
-    return [node];
-  }
-
-  const results = [];
-  const targetType = remainingChain[0].type;
-  // const keyName = remainingChain[0]?.options?.key;
-
-  walk.simple(node, {
-    [targetType](foundNode) {
-      if (remainingChain.length === 1) {
-        // Last in chain - this is a match
-        results.push(foundNode);
-      } else {
-        // Continue searching deeper
-
-        // const nextNode = keyName?foundNode[keyName]:foundNode;
-
-
         const deeper = findInChain(foundNode, remainingChain.slice(1));
         results.push(...deeper);
       }

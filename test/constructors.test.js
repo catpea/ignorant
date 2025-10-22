@@ -1,8 +1,32 @@
 #!/usr/bin/env node
-import { arraysEqual, print, printInfo,  printSuccess,  printError,  printDivider, printCode, printJavaScript } from './assert.js';
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONSTRUCTOR INHERITANCE TEST SPECIFICATION
+// Classification: UNCLASSIFIED
+// Document Control Number: CITS-2025-001
+// ═══════════════════════════════════════════════════════════════════════════════
 
+import { createTestSuite, VERBOSITY_LEVELS } from 'politician';
 import { transform, formatCode } from '../index.js';
 import query from '../query.js';
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SECTION 1: TEST CONFIGURATION
+// ──────────────────────────────────────────────────────────────────────────────
+
+const suite = createTestSuite('Constructor Inheritance Compliance', {
+  verbosity: VERBOSITY_LEVELS.VERBOSE,
+  classification: 'UNCLASSIFIED',
+  documentId: 'CITS-2025-001',
+  metadata: {
+    purpose: 'Verify constructor merging behavior in class inheritance',
+    author: 'Automated Test System',
+    framework: 'Politician Test Framework v1.0'
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SECTION 2: TEST DATA PREPARATION
+// ──────────────────────────────────────────────────────────────────────────────
 
 const originalCode = await formatCode(`
 export class A {
@@ -28,53 +52,82 @@ export class D {
   }
 }`);
 
-printDivider('ORIGINAL CODE');
-printJavaScript(originalCode);
-
-printDivider('EXPECTED CODE');
-printJavaScript(expectedCode);
-
 const transformedCode = await transform(originalCode);
 
-printDivider('TRANSFORMED CODE');
+// ──────────────────────────────────────────────────────────────────────────────
+// SECTION 3: TEST EXECUTION
+// ──────────────────────────────────────────────────────────────────────────────
 
-printJavaScript(transformedCode);
+suite
+  .header()
+  .section('PRELIMINARY DOCUMENTATION')
+  .subsection('Original Source Code')
+  .javascript(originalCode, 'INPUT: Multi-level Class Hierarchy')
+  .subsection('Expected Output')
+  .javascript(expectedCode, 'EXPECTED: Flattened Class with Merged Constructor')
+  .subsection('Actual Transformation Result')
+  .javascript(transformedCode, 'ACTUAL: Transformer Output')
 
-if (transformedCode == expectedCode ){
-  printSuccess('RESULT: SOURCE CODE TEST PASS');
-}else{
-  printError('RESULT: SOURCE CODE TEST FAILED');
-}
+  .section('COMPLIANCE VERIFICATION')
+  .test('Source Code Exact Match', () => ({
+    passed: transformedCode === expectedCode,
+    actual: transformedCode,
+    expected: expectedCode,
+    message: transformedCode === expectedCode
+      ? 'Transformed code matches expected output exactly'
+      : 'Transformed code does not match expected output'
+  }))
 
-///
+  .test('Constructor Method Execution Order', () => {
+    const actualMethodOrder = query(transformedCode)
+      .ClassDeclaration
+      .MethodDefinition
+      .Literal
+      .map(Literal => Literal.value)
+      .join('');
 
-let failureCount = 0;
+    const expectedMethodOrder = query(originalCode)
+      .ClassDeclaration
+      .MethodDefinition
+      .Literal
+      .map(Literal => Literal.value)
+      .join('');
 
-const actualMethodOrder   = query(transformedCode).ClassDeclaration.MethodDefinition.Literal.map(Literal=>Literal.value).join('');
-const expectedMethodOrder = query(originalCode).ClassDeclaration.MethodDefinition.Literal.map(Literal=>Literal.value).join('');
+    return {
+      passed: actualMethodOrder === expectedMethodOrder,
+      actual: actualMethodOrder,
+      expected: expectedMethodOrder,
+      message: actualMethodOrder === expectedMethodOrder
+        ? 'Constructor payloads merged in correct OOP execution order'
+        : 'Constructor payloads not in standard OOP order of execution'
+    };
+  })
 
-if ( actualMethodOrder == expectedMethodOrder ){
-  printSuccess('METHOD ORDER TEST PASS');
-}else{
-  failureCount++
-  printError('METHOD ORDER TEST FAILED: Constructor payloads should be listed in standard OOP order of execution');
-}
+  .test('Constructor Parameter Promotion', () => {
+    const expectedArguments = query(expectedCode)
+      .ClassDeclaration
+      .MethodDefinition
+      .Identifier
+      .map(o => o.name)[0];
 
-//
+    const actualArguments = query(transformedCode)
+      .ClassDeclaration
+      .MethodDefinition
+      .Identifier
+      .map(o => o.name)[0];
 
-// const expectedArguments = query(expectedCode).ClassDeclaration.MethodDefinition({kind:constructor}).FunctionExpression.map(FunctionExpression=>FunctionExpression.params.map(o=>o.name)).flat(Infinity)[0];
-// const actualArguments = query(transformedCode).ClassDeclaration.MethodDefinition({kind:constructor}).FunctionExpression.map(FunctionExpression=>FunctionExpression.params.map(o=>o.name)).flat(Infinity)[0];
+    return {
+      passed: expectedArguments === actualArguments,
+      actual: actualArguments,
+      expected: expectedArguments,
+      message: expectedArguments === actualArguments
+        ? 'Constructor parameters correctly promoted from inheritance chain'
+        : 'Constructor parameters were incorrectly promoted'
+    };
+  })
 
-const expectedArguments = query(expectedCode).ClassDeclaration.MethodDefinition.Identifier.map(o=>o.name)[0]
-const actualArguments = query(transformedCode).ClassDeclaration.MethodDefinition.Identifier.map(o=>o.name)[0]
+  .exit();
 
-if ( expectedArguments == actualArguments ){
-  printSuccess('CONSTRUCTOR ARGUMENTS TEST PASSED');
-}else{
-  failureCount++
-  printError('CONSTRUCTOR ARGUMENTS TEST FAILED: Constructor arguments were incorrectly promoted');
-}
-
-
-
-process.exit(failureCount?1:0);
+// ═══════════════════════════════════════════════════════════════════════════════
+// END OF TEST SPECIFICATION
+// ═══════════════════════════════════════════════════════════════════════════════
