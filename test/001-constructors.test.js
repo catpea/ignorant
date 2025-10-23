@@ -1,24 +1,24 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════════════════
-// METHOD INHERITANCE AND OVERRIDE TEST SPECIFICATION
+// CONSTRUCTOR INHERITANCE TEST SPECIFICATION
 // Classification: UNCLASSIFIED
-// Document Control Number: MITS-2025-001
+// Document Control Number: CITS-2025-001
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { createTestSuite, VERBOSITY_LEVELS } from 'politician';
-import { transform } from '../index.js';
+import { transform, formatCode } from '../index.js';
 import query from '../query.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // SECTION 1: TEST CONFIGURATION
 // ──────────────────────────────────────────────────────────────────────────────
 
-const suite = createTestSuite('Method Inheritance and Override Compliance', {
+const suite = createTestSuite('Constructor Inheritance Compliance', {
   verbosity: VERBOSITY_LEVELS.VERBOSE,
   classification: 'UNCLASSIFIED',
-  documentId: 'MITS-2025-001',
+  documentId: 'CITS-2025-001',
   metadata: {
-    purpose: 'Verify method inheritance and override behavior in class hierarchy',
+    purpose: 'Verify constructor merging behavior in class inheritance',
     author: 'Automated Test System',
     framework: 'Politician Test Framework v1.0'
   }
@@ -28,34 +28,29 @@ const suite = createTestSuite('Method Inheritance and Override Compliance', {
 // SECTION 2: TEST DATA PREPARATION
 // ──────────────────────────────────────────────────────────────────────────────
 
-const originalCode = `
-export class Animal {
-  c(){ console.log('c'); }
-  b(){ console.log('b base'); }
+const originalCode = await formatCode(`
+class A {
+  constructor(){ console.log('a'); }
 }
-export class Ape extends Animal {
-  d(){ console.log('d'); }
-  b(){ console.log('b intermediate'); }
+class B extends A {
+  constructor(b){ console.log('b'); }
 }
-export class Hominid extends Ape {
-  e(){ console.log('e'); }
-  b(){ console.log('b intermediate'); }
+class C extends B {
+  constructor(c){ console.log('c'); }
 }
-export class Human extends Hominid {
-  a(){ console.log('a'); }
-  b(){ console.log('b (top overwrite)'); }
-}
-`;
+class D extends C {
+  constructor(){ console.log('d'); }
+}`);
 
-const expectedCode = `
-export class Human extends Hominid {
-  a(){ console.log('a'); }
-  b(){ console.log('b (top overwrite)'); }
-  c(){ console.log('c'); }
-  d(){ console.log('d'); }
-  e(){ console.log('e'); }
-}
-`;
+const expectedCode = await formatCode(`
+export class D {
+  constructor(c) {
+    console.log("a")
+    console.log("b")
+    console.log("c")
+    console.log("d")
+  }
+}`);
 
 const transformedCode = await transform(originalCode);
 
@@ -67,81 +62,79 @@ suite
   .header()
   .section('PRELIMINARY DOCUMENTATION')
   .subsection('Original Source Code')
-  .javascript(originalCode, 'INPUT: Multi-level Inheritance with Method Overrides')
+  .javascript(originalCode, 'INPUT: Multi-level Class Hierarchy')
   .subsection('Expected Output')
-  .javascript(expectedCode, 'EXPECTED: Flattened Class with Inherited Methods')
+  .javascript(expectedCode, 'EXPECTED: Flattened Class with Merged Constructor')
   .subsection('Actual Transformation Result')
   .javascript(transformedCode, 'ACTUAL: Transformer Output')
 
   .section('COMPLIANCE VERIFICATION')
-  .test('Method Order and Inheritance', () => {
-    const actual = query(transformedCode)
-      .ClassDeclaration
-      .MethodDefinition
-      .name();
+  .test('Source Code Exact Match', () => ({
+    passed: transformedCode === expectedCode,
+    actual: transformedCode,
+    expected: expectedCode,
+    message: transformedCode === expectedCode
+      ? 'Transformed code matches expected output exactly'
+      : 'Transformed code does not match expected output'
+  }))
 
-    const expected = query(expectedCode)
-      .ClassDeclaration
-      .MethodDefinition
-      .name();
-
-    const arraysEqual = (a, b) =>
-      a.length === b.length && a.every((element, index) => element === b[index]);
-
+  .test('All resulting classes must have export keyword', () => {
+    const existenceOfExport = query(transformedCode).ExportNamedDeclaration.get().length==1;
     return {
-      passed: arraysEqual(actual, expected),
-      actual: actual.join(', '),
-      expected: expected.join(', '),
-      message: arraysEqual(actual, expected)
-        ? 'Methods inherited and ordered correctly, overrides preserved'
-        : 'Methods not properly inherited or ordered incorrectly'
+      passed: existenceOfExport,
+      actual: existenceOfExport,
+      expected: true,
+      message: existenceOfExport
+        ? 'Transformed class has export keyword for external access/import and sease of use'
+        : 'Transformed class is missing export keyword and will not be accessible via import'
     };
   })
 
-  .test('Override Behavior', () => {
-    // Verify that method 'b' from the topmost class is used, not base class
-    // Get all Literals and check if the expected override value exists
-    const literals = query(transformedCode)
+  .test('Constructor Method Execution Order', () => {
+    const actualMethodOrder = query(transformedCode)
       .ClassDeclaration
       .MethodDefinition
       .Literal
-      .map(l => l.value);
+      .map(Literal => Literal.value)
+      .join('');
 
-    const hasTopOverride = literals.includes('b (top overwrite)');
-    const hasBaseVersion = literals.includes('b base');
-    const hasIntermediateVersion = literals.includes('b intermediate');
+    const expectedMethodOrder = query(originalCode)
+      .ClassDeclaration
+      .MethodDefinition
+      .Literal
+      .map(Literal => Literal.value)
+      .join('');
 
     return {
-      passed: hasTopOverride && !hasBaseVersion && !hasIntermediateVersion,
-      actual: literals.filter(l => l.startsWith('b')).join(', '),
-      expected: 'b (top overwrite)',
-      message: (hasTopOverride && !hasBaseVersion && !hasIntermediateVersion)
-        ? 'Method override from topmost class correctly preserved'
-        : 'Method override not properly handled - base or intermediate version found'
+      passed: actualMethodOrder === expectedMethodOrder,
+      actual: actualMethodOrder,
+      expected: expectedMethodOrder,
+      message: actualMethodOrder === expectedMethodOrder
+        ? 'Constructor payloads merged in correct OOP execution order'
+        : 'Constructor payloads not in standard OOP order of execution'
     };
   })
 
-  .test('Inherited Method Presence', () => {
-    const actual = query(transformedCode)
+  .test('Constructor Parameter Promotion', () => {
+    const expectedArguments = query(expectedCode)
       .ClassDeclaration
       .MethodDefinition
-      .name();
+      .Identifier
+      .map(o => o.name)[0];
 
-    // Check that all inherited methods are present
-    const hasA = actual.includes('a');
-    const hasB = actual.includes('b');
-    const hasC = actual.includes('c');
-    const hasD = actual.includes('d');
-    const hasE = actual.includes('e');
-    const allPresent = hasA && hasB && hasC && hasD && hasE;
+    const actualArguments = query(transformedCode)
+      .ClassDeclaration
+      .MethodDefinition
+      .Identifier
+      .map(o => o.name)[0];
 
     return {
-      passed: allPresent,
-      actual: actual.join(', '),
-      expected: 'a, b, c, d, e',
-      message: allPresent
-        ? 'All methods from inheritance chain present'
-        : 'Missing inherited methods'
+      passed: expectedArguments === actualArguments,
+      actual: actualArguments,
+      expected: expectedArguments,
+      message: expectedArguments === actualArguments
+        ? 'Constructor parameters correctly promoted from inheritance chain'
+        : 'Constructor parameters were incorrectly promoted'
     };
   })
 

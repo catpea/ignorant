@@ -110,32 +110,7 @@ class QueryBuilder {
 
     return results;
   }
-  list1(chain) {
-     const results = [];
-     if (chain.length === 0) return results;
-     // If single query, just find all matching nodes
-     if (chain.length === 1) {
-       const targetType = chain[0].type;
-       walk.simple(this.ast, {
-         [targetType](node) {
-           results.push(node);
-         }
-       });
-       return results;
-     }
-     // Multi-level query - find nested matches
-     const targetType = chain[0].type;
-     walk.simple(this.ast, {
-       [targetType](node) {
-         // Start walking from this node through the chain
-         const matches = findInChain(node, chain.slice(1));
-         if (matches.length > 0) {
-           results.push(...matches);
-         }
-       }
-     });
-     return results;
-   }
+
 
    /// SEARCH/SELECT API
 
@@ -164,7 +139,7 @@ class QueryBuilder {
     let chain = this.list(this.queryChain);
     return chain.map(fn);
   }
-  get(prop) {
+  get() {
     return this.list(this.queryChain);
   }
 

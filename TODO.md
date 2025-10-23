@@ -1,2 +1,4 @@
-make the query a stand-alone package
-move the help setup from cli into haggis (atleast examples as it is goofy)
+- [ ] export classes marked by export even if intermediate
+- [ ] instad of blindly stacking constructors honor the placement of super() and add support for methods (super.method())
+- [x] make the query a stand-alone package
+- [ ] move the help setup from cli into haggis (atleast examples as it is goofy)

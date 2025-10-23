@@ -6,7 +6,7 @@
   "main": "index.js",
   "module": "index.js",
   "bin": {
-    "ignorant": "./cli.js"
+    "ignorant": "cli.js"
   },
   "scripts": {
     "save": "git add .; git commit -m 'Updated Release'; npm version patch; npm publish; git push --follow-tags;",

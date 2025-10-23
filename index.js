@@ -133,6 +133,14 @@ function mergeClasses(code, options = {}) {
         if (classNode) {
             const className = classNode.id ? classNode.id.name : 'default';
 
+            // Skip non-exported classes if exportOnly is enabled
+            if (options.exportOnly && !exportInfo.has(className)) {
+                // Skip this class but preserve non-class content before it
+                output.push(code.substring(lastEnd, nodeStart));
+                lastEnd = nodeEnd;
+                continue;
+            }
+
             // Skip intermediate classes if excludeIntermediate is enabled
             if (options.excludeIntermediate && extendedClasses.has(className)) {
                 // Skip this class but preserve non-class content before it
@@ -153,10 +161,11 @@ function mergeClasses(code, options = {}) {
             // Build the new class without extends
             output.push(code.substring(lastEnd, nodeStart));
 
-            // Add export prefix if needed
+            // Add export prefix - always export transformed classes
             if (isExportDefault) {
                 output.push('export default ');
-            } else if (isExportNamed) {
+            } else {
+                // Always add export keyword to make classes importable
                 output.push('export ');
             }
 
@@ -417,8 +426,8 @@ function reorderClass(classNode, originalCode) {
 }
 
 // Transform accepts string as input, and returns a string as output
-async function transform(code) {
-    const merged = mergeClasses(code, {excludeIntermediate: true});
+async function transform(code, options={excludeIntermediate: true}) {
+    const merged = mergeClasses(code, options);
     const ordered = orderCode(merged);
     const formatted = await formatCode(ordered);
     return formatted;
