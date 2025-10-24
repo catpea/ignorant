@@ -80,33 +80,92 @@ function mergeClasses(code, options = {}) {
         return members;
     }
 
-    // Function to collect constructor bodies from the inheritance chain
-    function collectConstructorBodies(className, visited = new Set()) {
-        if (visited.has(className)) return [];
+    // Function to recursively inline a constructor body, respecting super() placement
+    function inlineConstructorBody(className, visited = new Set()) {
+        if (visited.has(className)) return '';
         visited.add(className);
 
         const classNode = classMap.get(className);
-        if (!classNode) return [];
+        if (!classNode) return '';
 
-        const constructorBodies = [];
-
-        // Collect parent constructors first (bottom-up approach)
-        if (classNode.superClass && classNode.superClass.type === 'Identifier') {
-            const parentConstructors = collectConstructorBodies(classNode.superClass.name, visited);
-            constructorBodies.push(...parentConstructors);
-        }
-
-        // Collect current class constructor body and params
         const constructor = classNode.body.body.find(m => m.type === 'MethodDefinition' && m.kind === 'constructor');
-        if (constructor && constructor.value && constructor.value.body) {
-            constructorBodies.push({
-                body: constructor.value.body,
-                params: constructor.value.params,
-                fromClass: className
-            });
+        if (!constructor || !constructor.value || !constructor.value.body) return '';
+
+        const bodyStart = constructor.value.body.start + 1;
+        const bodyEnd = constructor.value.body.end - 1;
+        const bodyCode = code.substring(bodyStart, bodyEnd);
+
+        // Find super() call using regex (handles multiline)
+        const superCallRegex = /^([\s\S]*?)\bsuper\s*\([^)]*\)\s*;?\s*([\s\S]*)$/;
+        const superCallMatch = bodyCode.match(superCallRegex);
+
+        if (superCallMatch && classNode.superClass && classNode.superClass.type === 'Identifier') {
+            const beforeSuper = superCallMatch[1].trim();
+            const afterSuper = superCallMatch[2].trim();
+
+            // Recursively get parent constructor content
+            const parentContent = inlineConstructorBody(classNode.superClass.name, visited);
+
+            // Combine: before + parent + after
+            const parts = [];
+            if (beforeSuper) parts.push(beforeSuper);
+            if (parentContent) parts.push(parentContent);
+            if (afterSuper) parts.push(afterSuper);
+            return parts.join('\n');
         }
 
-        return constructorBodies;
+        // No super() call, just return the body
+        return bodyCode.trim();
+    }
+
+    // Function to recursively inline a method body, respecting super.method() placement
+    function inlineMethodBody(className, methodName, visited = new Set()) {
+        if (visited.has(`${className}.${methodName}`)) return '';
+        visited.add(`${className}.${methodName}`);
+
+        const classNode = classMap.get(className);
+        if (!classNode) return '';
+
+        const method = classNode.body.body.find(m =>
+            m.type === 'MethodDefinition' &&
+            m.kind === 'method' &&
+            m.key.type === 'Identifier' &&
+            m.key.name === methodName
+        );
+
+        if (!method || !method.value || !method.value.body) {
+            // Method not found in this class, try parent
+            if (classNode.superClass && classNode.superClass.type === 'Identifier') {
+                return inlineMethodBody(classNode.superClass.name, methodName, visited);
+            }
+            return '';
+        }
+
+        const bodyStart = method.value.body.start + 1;
+        const bodyEnd = method.value.body.end - 1;
+        const bodyCode = code.substring(bodyStart, bodyEnd);
+
+        // Find super.method() call using regex
+        const superMethodRegex = new RegExp(`^([\\s\\S]*?)\\bsuper\\.${methodName}\\s*\\([^)]*\\)\\s*;?\\s*([\\s\\S]*)$`);
+        const superMethodMatch = bodyCode.match(superMethodRegex);
+
+        if (superMethodMatch && classNode.superClass && classNode.superClass.type === 'Identifier') {
+            const beforeSuper = superMethodMatch[1].trim();
+            const afterSuper = superMethodMatch[2].trim();
+
+            // Recursively get parent method content
+            const parentContent = inlineMethodBody(classNode.superClass.name, methodName, visited);
+
+            // Combine: before + parent + after
+            const parts = [];
+            if (beforeSuper) parts.push(beforeSuper);
+            if (parentContent) parts.push(parentContent);
+            if (afterSuper) parts.push(afterSuper);
+            return parts.join('\n');
+        }
+
+        // No super.method() call, just return the body
+        return bodyCode.trim();
     }
 
     // Transform each class
@@ -155,21 +214,18 @@ function mergeClasses(code, options = {}) {
                 inheritedMembers.push(...collectMembers(classNode.superClass.name) );
             }
 
-            // Get all constructor bodies in the inheritance chain
-            const constructorBodies = collectConstructorBodies(className);
-
             // Build the new class without extends
             output.push(code.substring(lastEnd, nodeStart));
 
             // Add export prefix - always export transformed classes
-            if (isExportDefault) {
+            if (isExportDefault || (options.exportOnly && exportInfo.get(className) === 'default')) {
                 output.push('export default ');
             } else {
                 // Always add export keyword to make classes importable
                 output.push('export ');
             }
 
-            output.push(generateClass(classNode, inheritedMembers, constructorBodies, code));
+            output.push(generateClass(classNode, inheritedMembers, code, className, inlineConstructorBody, inlineMethodBody));
             lastEnd = nodeEnd;
         }
     }
@@ -178,37 +234,32 @@ function mergeClasses(code, options = {}) {
     return output.join('');
 }
 
-function generateClass(classNode, inheritedMembers, constructorBodies, originalCode) {
-    const className = classNode.id ? classNode.id.name : 'AnonymousClass';
-    let result = `class ${className} {\n`;
+function generateClass(classNode, inheritedMembers, originalCode, className, inlineConstructorBody, inlineMethodBody) {
+    const classNameStr = classNode.id ? classNode.id.name : 'AnonymousClass';
+    let result = `class ${classNameStr} {\n`;
 
-    // Merge constructors from the inheritance chain
+    // Handle constructor with super() inlining
     const constructor = classNode.body.body.find(m => m.type === 'MethodDefinition' && m.kind === 'constructor');
-    if (constructor || constructorBodies.length > 0) {
-        // Find the first non-empty parameter list from top (derived class) to bottom (base class)
+    if (constructor) {
+        // Get constructor parameters
         let params = '';
-
-        // Start from the end of constructorBodies (which represents the topmost/derived class)
-        // and work backwards to find the first constructor with non-empty params
-        for (let i = constructorBodies.length - 1; i >= 0; i--) {
-            const { params: ctorParams } = constructorBodies[i];
-            if (ctorParams && ctorParams.length > 0) {
-                const paramsStart = ctorParams[0].start;
-                const paramsEnd = ctorParams[ctorParams.length - 1].end;
-                params = originalCode.substring(paramsStart, paramsEnd);
-                break;
-            }
+        if (constructor.value.params && constructor.value.params.length > 0) {
+            const paramsStart = constructor.value.params[0].start;
+            const paramsEnd = constructor.value.params[constructor.value.params.length - 1].end;
+            params = originalCode.substring(paramsStart, paramsEnd);
         }
 
         result += `    constructor(${params}) {\n`;
 
-        // Add all constructor bodies in order (from base class to derived class)
-        for (const { body } of constructorBodies) {
-            // Extract the body statements, removing the braces and super() calls
-            const bodyCode = originalCode.substring(body.start + 1, body.end - 1);
-            const cleanedBody = bodyCode.replace(/super\([^)]*\);?\s*/g, '');
-            if (cleanedBody.trim()) {
-                result += '        ' + cleanedBody.trim() + '\n';
+        // Get inlined constructor body
+        const inlinedBody = inlineConstructorBody(className);
+        if (inlinedBody.trim()) {
+            // Split by lines and indent each line
+            const lines = inlinedBody.split('\n');
+            for (const line of lines) {
+                if (line.trim()) {
+                    result += '        ' + line.trim() + '\n';
+                }
             }
         }
 
@@ -216,22 +267,47 @@ function generateClass(classNode, inheritedMembers, constructorBodies, originalC
     }
 
     // Add own members (everything except constructor)
+    // Build a set of method names to check which need inlining
+    const ownMethods = new Map();
     for (const member of classNode.body.body) {
         if (member.type === 'MethodDefinition' && member.kind === 'constructor') {
             continue; // Skip constructor, already handled
         }
-        const memberCode = originalCode.substring(member.start, member.end);
-        result += '    ' + memberCode + '\n';
+        if (member.type === 'MethodDefinition' && member.kind === 'method' && member.key.type === 'Identifier') {
+            ownMethods.set(member.key.name, member);
+        } else {
+            // Non-method members (properties, getters, setters, etc) - just copy as-is
+            const memberCode = originalCode.substring(member.start, member.end);
+            result += '    ' + memberCode + '\n';
+        }
     }
 
-    // Add inherited members with comments
-    // Build a set of already-added member names to avoid duplicates
+    // Process own methods with super.method() inlining
+    for (const [methodName, member] of ownMethods) {
+        const inlinedBody = inlineMethodBody(className, methodName);
+
+        // Get method signature (everything before the body)
+        const bodyStart = member.value.body.start;
+        const methodSignature = originalCode.substring(member.start, bodyStart).trim();
+
+        result += `    ${methodSignature} {\n`;
+        if (inlinedBody.trim()) {
+            const lines = inlinedBody.split('\n');
+            for (const line of lines) {
+                if (line.trim()) {
+                    result += '        ' + line.trim() + '\n';
+                }
+            }
+        }
+        result += '    }\n';
+    }
+
+    // Add inherited members with comments (only if not overridden)
     const addedMembers = new Set();
     for (const member of classNode.body.body) {
         if (member.type === 'MethodDefinition' && member.kind === 'constructor') {
             continue;
         }
-        // Get member identifier
         const memberId = getMemberId(member, originalCode);
         if (memberId) addedMembers.add(memberId);
     }
@@ -242,9 +318,30 @@ function generateClass(classNode, inheritedMembers, constructorBodies, originalC
         if (memberId && addedMembers.has(memberId)) continue;
         if (memberId) addedMembers.add(memberId);
 
-        const memberCode = originalCode.substring(member.start, member.end);
-        result += `    // from ${fromClass}\n`;
-        result += '    ' + memberCode + '\n';
+        // For inherited methods, we also need to inline them
+        if (member.type === 'MethodDefinition' && member.kind === 'method' && member.key.type === 'Identifier') {
+            const methodName = member.key.name;
+            const inlinedBody = inlineMethodBody(fromClass, methodName);
+
+            const bodyStart = member.value.body.start;
+            const methodSignature = originalCode.substring(member.start, bodyStart).trim();
+
+            result += `    // from ${fromClass}\n`;
+            result += `    ${methodSignature} {\n`;
+            if (inlinedBody.trim()) {
+                const lines = inlinedBody.split('\n');
+                for (const line of lines) {
+                    if (line.trim()) {
+                        result += '        ' + line.trim() + '\n';
+                    }
+                }
+            }
+            result += '    }\n';
+        } else {
+            const memberCode = originalCode.substring(member.start, member.end);
+            result += `    // from ${fromClass}\n`;
+            result += '    ' + memberCode + '\n';
+        }
     }
 
     result += '}';
@@ -310,7 +407,7 @@ function getMemberId(member, originalCode) {
 
 // Format code using prettier
 export async function formatCode(codeStr) {
-    return await prettier.format(codeStr.trim(), { semi: false, parser: "babel" });
+    return await prettier.format(codeStr.trim(), { semi: true, parser: "acorn" });
 }
 
 // Order class members according to JavaScript conventions

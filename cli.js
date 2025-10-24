@@ -11,6 +11,7 @@ const template = {
   help: false,
   classExtractionMode: true, // instead of transforming the file, transform code and then save Classes as separate files
   excludeIntermediateClasses: true,
+  exportOnly: true,
   sourceFiles: [],
   destinationDirectory: "dist",
 };
@@ -74,7 +75,7 @@ if(options.classExtractionMode){
     await ensureDir(outputDir);
     const code = fs.readFileSync(inputFile, 'utf-8');
     // standard transformation
-    const transformed = await transform(code);
+    const transformed = await transform(code, options);
     // but then we split
     const extractedClasses = extractClasses(transformed);
     // save
@@ -89,7 +90,7 @@ if(options.classExtractionMode){
   for (const {inputFile, outputFile} of operations){
     await ensureDir(outputFile);
     const code = fs.readFileSync(inputFile, 'utf-8');
-    const transformed = await transform(code);
+    const transformed = await transform(code, options);
     fs.writeFileSync(outputFile, transformed);
   }
 }

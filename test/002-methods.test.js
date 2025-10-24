@@ -74,8 +74,6 @@ suite
   .javascript(transformedCode, 'ACTUAL: Transformer Output')
 
   .section('COMPLIANCE VERIFICATION')
-
-  .section('COMPLIANCE VERIFICATION')
   .test('Source Code Exact Match', () => ({
     passed: transformedCode === expectedCode,
     actual: transformedCode,

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════════════════
-// EXPORT ONLY TEST SPECIFICATION
+// SUPER ORDER OF OPERATIONS TEST SPECIFICATION
 // Classification: UNCLASSIFIED
-// Document Control Number: MITS-2025-003
+// Document Control Number: MITS-2025-004
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { createTestSuite, VERBOSITY_LEVELS } from 'politician';
@@ -13,12 +13,12 @@ import query from '../query.js';
 // SECTION 1: TEST CONFIGURATION
 // ──────────────────────────────────────────────────────────────────────────────
 
-const suite = createTestSuite('Output Only Export Classes Compliance in exportOnly mode', {
+const suite = createTestSuite('Allow super() and super.method() to structure fused methods.', {
   verbosity: VERBOSITY_LEVELS.VERBOSE,
   classification: 'UNCLASSIFIED',
-  documentId: 'MITS-2025-003',
+  documentId: 'MITS-2025-004',
   metadata: {
-    purpose: 'Only the calsses marked export sould be included in transfomred output',
+    purpose: 'Honoring super() and super.method() allow for flexible code ordering',
     author: 'Automated Test System',
     framework: 'Politician Test Framework v1.0'
   }
@@ -29,48 +29,65 @@ const suite = createTestSuite('Output Only Export Classes Compliance in exportOn
 // ──────────────────────────────────────────────────────────────────────────────
 
 
-// NOTE: only Ape and Human are marked export
-// NOTE: exportOnly:true is set in options await transform(originalCode, {exportOnly:true});
-
 const originalCode = `
-class Animal {
-  animal(){ console.log('animal'); }
+class One {
+  constructor() {
+    console.log("line #2 | Mary Had a Little Lamb");
+  }
+  print() {
+    console.log("line #6 | had");
+  }
 }
-export class Ape extends Animal {
-  ape(){ console.log('ape'); }
+class Two extends One {
+  constructor() {
+    console.log("line #1 | ----------------------");
+    super();
+  }
+  print() {
+    super.print();
+    console.log("line #7 | a little");
+  }
 }
-class Hominid extends Ape {
-  hominid(){ console.log('hominid'); }
+class Three extends Two {
+  constructor() {
+    super();
+    console.log("line #3 | by Sarah Josepha Hale ");
+  }
+
+  print() {
+    console.log("line #5 | Mary");
+    super.print();
+  }
 }
-export class Human extends Hominid {
-  human(){ console.log('human'); }
+export class Mary extends Three {
+  constructor() {
+    super();
+    console.log("line #4 | ----------------------");
+    this.print();
+  }
+  print() {
+    super.print();
+    console.log("line #8 | lamb...");
+  }
 }
 `;
 
 const expectedCode = await formatCode(`
-  export class Ape {
-    ape() {
-      console.log("ape")
-    }
-    animal() {
-      console.log("animal")
-    }
+export default class Mary {
+  constructor() {
+    console.log("line #1 | ----------------------");
+    console.log("line #2 | Mary Had a Little Lamb");
+    console.log("line #3 | by Sarah Josepha Hale ");
+    console.log("line #4 | ----------------------");
+    this.print();
   }
-
-  export class Human {
-    human() {
-      console.log("human")
-    }
-    animal() {
-      console.log("animal")
-    }
-    ape() {
-      console.log("ape")
-    }
-    hominid() {
-      console.log("hominid")
-    }
+  print(){
+    console.log("line #5 | Mary");
+    console.log("line #6 | had");
+    console.log("line #7 | a little");
+    console.log("line #8 | lamb...");
   }
+}
 `);
 
 const transformedCode = await transform(originalCode, {exportOnly:true});
@@ -83,9 +100,9 @@ suite
   .header()
   .section('PRELIMINARY DOCUMENTATION')
   .subsection('Original Source Code')
-  .javascript(originalCode, 'INPUT: exportOnly:true, Ape And Human Marked For Export')
+  .javascript(originalCode, 'INPUT: Class heavily reliant on super()/super.method() for order of operations')
   .subsection('Expected Output')
-  .javascript(expectedCode, 'EXPECTED: Only Ape And Human Should Be Exported')
+  .javascript(expectedCode, 'EXPECTED: Correctly ordered methods')
   .subsection('Actual Transformation Result')
   .javascript(transformedCode, 'ACTUAL: Transformer Output')
 
