@@ -1,6 +1,4 @@
-_unused/
-
-*-v[0-9]*.js
+.claude
 
 # Logs
 logs

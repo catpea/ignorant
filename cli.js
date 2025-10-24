@@ -5,7 +5,17 @@ import { argv, cwd} from 'node:process';
 import { dirname, extname, join as pathJoin, resolve as pathResolve } from 'node:path';
 
 import haggis from 'haggis';
-import { transform, extractClasses } from './index.js';
+
+
+
+
+import { compileClasses } from './index.js';
+// import { transform, extractClasses } from './index.js';
+
+
+
+
+
 
 const template = {
   help: false,
@@ -69,29 +79,43 @@ for (const file of options.sourceFiles){
   });
 }
 
-if(options.classExtractionMode){
-  // class extraction
-  for (const {inputFile, outputDir} of operations){
-    await ensureDir(outputDir);
-    const code = fs.readFileSync(inputFile, 'utf-8');
-    // standard transformation
-    const transformed = await transform(code, options);
-    // but then we split
-    const extractedClasses = extractClasses(transformed);
-    // save
-    for(const {className, content} of extractedClasses) {
-      const outputFile = pathJoin(pathResolve(outputDir, className + '.js'));
-      fs.writeFileSync(outputFile, content);
-    }
+if(0&&options.classExtractionMode){
 
-  }
+  // // class extraction
+  // for (const {inputFile, outputDir} of operations){
+  //   await ensureDir(outputDir);
+  //   const code = fs.readFileSync(inputFile, 'utf-8');
+  //   // standard transformation
+  //   const transformed = await transform(code, options);
+  //   // but then we split
+  //   const extractedClasses = extractClasses(transformed);
+  //   // save
+  //   for(const {className, content} of extractedClasses) {
+  //     const outputFile = pathJoin(pathResolve(outputDir, className + '.js'));
+  //     fs.writeFileSync(outputFile, content);
+  //   }
+  // }
+
 }else{
   // no class extraction
+  // for (const {inputFile, outputFile} of operations){
+  //   await ensureDir(outputFile);
+  //   const code = fs.readFileSync(inputFile, 'utf-8');
+  //   const transformed = await transform(code, options);
+  //   fs.writeFileSync(outputFile, transformed);
+  // }
+
   for (const {inputFile, outputFile} of operations){
     await ensureDir(outputFile);
     const code = fs.readFileSync(inputFile, 'utf-8');
-    const transformed = await transform(code, options);
-    fs.writeFileSync(outputFile, transformed);
+
+
+    const result = await compileClasses(code);
+    console.log(result.code); // Access the compiled code
+
+
+    // const transformed = await transform(code, options);
+    // fs.writeFileSync(outputFile, transformed);
   }
 }
 

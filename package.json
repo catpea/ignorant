@@ -2,7 +2,7 @@
   "type": "module",
   "name": "ignorant",
   "description": "Pre-compile OOP inheritance into standalone, dependency-free classes. Flatten class hierarchies at build time for simplified distribution.",
-  "version": "1.0.5",
+  "version": "2.0.0",
   "main": "index.js",
   "module": "index.js",
   "bin": {
@@ -45,6 +45,7 @@
   "dependencies": {
     "acorn": "^8.15.0",
     "acorn-walk": "^8.3.4",
+    "astring": "^1.9.0",
     "haggis": "^1.0.1",
     "politician": "^1.0.1",
     "prettier": "^3.6.2"

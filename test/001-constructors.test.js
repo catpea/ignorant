@@ -6,7 +6,11 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { createTestSuite, VERBOSITY_LEVELS } from 'politician';
-import { transform, formatCode } from '../index.js';
+// import { transform, formatCode } from '../index.js';
+
+import { compileClasses, formatCode } from '../index.js';
+
+
 import query from '../query.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -33,18 +37,18 @@ class A {
   constructor(){ console.log('a'); }
 }
 class B extends A {
-  constructor(b){ console.log('b'); }
+  constructor(){ super(); console.log('b'); }
 }
 class C extends B {
-  constructor(c){ console.log('c'); }
+  constructor(){ super(); console.log('c'); }
 }
 class D extends C {
-  constructor(){ console.log('d'); }
+  constructor(){ super(); console.log('d'); }
 }`);
 
 const expectedCode = await formatCode(`
 export class D {
-  constructor(c) {
+  constructor() {
     console.log("a")
     console.log("b")
     console.log("c")
@@ -52,7 +56,9 @@ export class D {
   }
 }`);
 
-const transformedCode = await transform(originalCode);
+const result = await compileClasses(originalCode);
+// console.log(result.code); // Access the compiled code
+const transformedCode = result.code;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // SECTION 3: TEST EXECUTION

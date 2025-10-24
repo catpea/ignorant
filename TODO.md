@@ -1,12 +1,10 @@
-# Ignorant
-Pre-compile OOP inheritance into standalone, dependency-free classes.
+```javascript
+// v1.0
+import { mergeClasses, transform } from './old-version.js';
+const result = await transform(code);
 
-### Column Name
-- [ ] add super and super.method funcion building
-- [ ] instad of blindly stacking constructors honor the placement of super() and add support for methods (super.method())
-- [ ] move the help setup from cli into haggis (atleast examples as it is goofy)
-
-### Completed Column ✓
-- [x] Completed task title
-- [x] export classes marked by export even if intermediate
-- [x] make the query a stand-alone package
+// v2.0
+import { compileClasses } from 'ignorant';
+const result = await compileClasses(code);
+console.log(result.code); // Access the compiled code
+```

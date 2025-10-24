@@ -1,298 +1,387 @@
-# ignorant
+# 🚀 ignorant
 
-Flattening the Inheritance Hierarchy for Enhanced Deployability
+A robust AST-based JavaScript class inheritance compiler that accurately flattens class hierarchies through proper AST parsing and manipulation.
 
-A build system that pre-compiles Object-Oriented Programming inheritance patterns into standalone, dependency-free classes. Because sometimes the best inheritance is no inheritance at all.
+1. **Pure AST Manipulation**
+   - No more regex string operations
+   - Uses Acorn for parsing and Astring for code generation
+   - Proper AST traversal and transformation
 
-[![npm version](https://img.shields.io/npm/v/ignorant.svg)](https://www.npmjs.com/package/ignorant)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+2. **Accurate Inheritance Handling**
+   - Correctly processes constructor chains
+   - Proper method override resolution
+   - Maintains member order and visibility
 
-## Table of Contents
+3. **Comprehensive Member Support**
+   - Static and instance fields
+   - Public and private members
+   - Getters and setters
+   - Computed property names
+   - Method overrides with proper resolution
 
-- [Abstract](#abstract)
-- [Motivation](#motivation)
-- [Technical Approach](#technical-approach)
-- [Installation](#installation)
-- [Command Line Usage](#command-line-usage)
-- [What It Does](#what-it-does)
-- [Features](#features)
-  - [Constructor Merging](#constructor-merging)
-  - [Method Inheritance and Override](#method-inheritance-and-override)
-  - [Member Ordering](#member-ordering)
-  - [Property and Field Support](#property-and-field-support)
-- [JavaScript API](#javascript-api)
-- [Testing](#testing)
-- [Benefits](#benefits)
-- [Use Cases](#use-cases)
-- [Design Philosophy](#design-philosophy)
+4. **Robust Error Handling**
+   - Circular inheritance detection
+   - Missing parent class validation
+   - Detailed error reporting
+   - Graceful degradation
 
-## Abstract
+5. **Better Code Organization**
+   - Object-oriented design with ClassCompiler class
+   - Modular methods for easy extension
+   - Clear separation of concerns
+   - Comprehensive documentation
 
-This document describes a mechanism for transforming hierarchical class structures into flattened, self-contained implementations. By eliminating runtime inheritance resolution, `ignorant` enables strategic source code organization at the engineering level while delivering compact, autonomous modules at the deployment level.
+## 📦 Installation
 
-## Motivation
-
-Traditional Object-Oriented Programming advocates extensive use of inheritance hierarchies to promote code reuse and abstraction. However, this architectural pattern introduces several challenges in modern JavaScript deployment:
-
-1. **Dependency Coupling**: Each class maintains runtime dependencies on its parent classes
-2. **Distribution Complexity**: Shipping a single class requires bundling its entire inheritance chain
-3. **Cognitive Overhead**: Understanding class behavior requires traversing multiple levels of abstraction
-
-`ignorant` addresses these concerns by performing compile-time inheritance resolution. The resulting artifacts are blissfully unaware of their ancestral lineage—hence the name.
-
-## Technical Approach
-
-The system operates by:
-
-1. Parsing JavaScript class hierarchies using AST analysis
-2. Flattening inheritance chains through member collection and inlining
-3. Eliminating `extends` clauses and `super()` calls
-4. Producing standalone class definitions with all inherited members present
-
-This approach permits engineering teams to maintain deep class hierarchies for organizational clarity while delivering flat, portable classes for production use.
-
-## Installation
-
-### Global Installation (CLI)
-```bash
-npm install -g ignorant
-```
-
-### Local Installation (API)
 ```bash
 npm install ignorant
 ```
 
-## Command Line Usage
+## 🎓 Usage
 
-```bash
-# Process a single file
-ignorant ./example.js  # creates dist/example.js
+### Basic Usage
 
-# Process multiple files
-ignorant ./src/*.js    # creates dist/ with flattened classes
-```
-
-## What It Does
-
-### Input
 ```javascript
-export class Animal {
-  sneak() {
-    console.log('shwooshes');
-  }
-  speak() {
-    console.log('Makes noise');
-  }
+import { compileClasses } from 'ignorant';
+
+const code = `
+class Animal {
+    constructor(name) {
+        this.name = name;
+    }
+    
+    makeSound() {
+        console.log('Some sound');
+    }
 }
 
-export class Cat extends Animal {
-  speak() {
-    console.log('Meows');
-  }
-}
-```
-
-### Output
-```javascript
-export default class Cat {
-  speak() {
-    console.log("Meows")
-  }
-  // from Animal
-  sneak() {
-    console.log("shwooshes")
-  }
-}
-```
-
-Note that intermediate classes (those extended by other classes) are excluded from output by default, as they serve only as organizational scaffolding.
-
-## Features
-
-### Constructor Merging
-Constructors from the entire inheritance chain are merged in proper OOP execution order (base class first, derived class last). Constructor parameters are promoted from the first non-empty parameter list in the hierarchy.
-
-**Input:**
-```javascript
-export class A {
-  constructor(){ console.log('a'); }
-}
-export class B extends A {
-  constructor(b){ console.log('b'); }
-}
-export class C extends B {
-  constructor(c){ console.log('c'); }
-}
-export class D extends C {
-  constructor(){ console.log('d'); }
-}
-```
-
-**Output:**
-```javascript
-export class D {
-  constructor(c) {
-    console.log("a")
-    console.log("b")
-    console.log("c")
-    console.log("d")
-  }
-}
-```
-
-### Method Inheritance and Override
-Methods are inherited from parent classes while respecting override behavior. Overridden methods from the topmost class take precedence, and inherited methods are clearly marked with comments.
-
-**Input:**
-```javascript
-export class Animal {
-  move(){ console.log('moving'); }
-  speak(){ console.log('generic sound'); }
-}
 export class Dog extends Animal {
-  speak(){ console.log('bark'); }
-  fetch(){ console.log('fetching'); }
+    constructor(name, breed) {
+        super(name);
+        this.breed = breed;
+    }
+    
+    makeSound() {
+        console.log('Woof!');
+    }
+    
+    fetch() {
+        console.log('Fetching ball');
+    }
 }
+`;
+
+const result = await compileClasses(code);
+console.log(result.code);
 ```
 
 **Output:**
 ```javascript
 export class Dog {
-  speak() {
-    console.log("bark")
-  }
-  fetch() {
-    console.log("fetching")
-  }
-  // from Animal
-  move() {
-    console.log("moving")
-  }
+    // Constructor inlines entire chain
+    constructor(name, breed) {
+        // inherited from Animal constructor
+        this.name = name;
+        this.breed = breed;
+    }
+    
+    // inherited from Animal
+    makeSound() {
+        console.log('Woof!');  // Overridden version
+    }
+    
+    fetch() {
+        console.log('Fetching ball');
+    }
 }
 ```
 
-### Member Ordering
-Class members are automatically ordered according to JavaScript conventions:
-- Static private properties
-- Static public properties
-- Static private methods
-- Static public methods
-- Instance private properties
-- Instance public properties
-- Constructor
-- Getters and setters
-- Instance private methods
-- Instance public methods
-
-### Property and Field Support
-Supports class properties (PropertyDefinition), static members, private members (using `#` syntax), getters, setters, and all modern JavaScript class features.
-
-## JavaScript API
-
-```bash
-npm i ignorant
-```
-
-### Basic Usage
+### Advanced Usage with Options
 
 ```javascript
-import { transform, extractClasses, formatCode } from 'ignorant';
-import fs from 'fs';
-import { join, resolve } from 'path';
+import { ClassCompiler } from 'ignorant';
 
-const code = fs.readFileSync(inputFile, 'utf-8');
+const compiler = new ClassCompiler({
+    excludeIntermediate: true,  // Skip classes that are extended by others
+    exportOnly: false,           // Include non-exported classes
+    preserveComments: true,      // Add source annotations
+    validateInheritance: true    // Validate inheritance chains
+});
 
-// Standard transformation: flatten all hierarchies
-const transformed = await transform(code);
+const result = await compiler.compile(code);
 
-// Extract individual classes for separate file output
-const extractedClasses = extractClasses(transformed);
+// Access detailed information
+console.log('Class Map:', result.classMap);
+console.log('Inheritance Graph:', result.inheritanceGraph);
+console.log('Errors:', result.errors);
+console.log('Compiled Code:', result.code);
+```
 
-// Write each class to its own file
-for (const {className, content} of extractedClasses) {
-  const outputFile = join(resolve(outputDir), className + '.js');
-  fs.writeFileSync(outputFile, content);
+### Extract Individual Classes
+
+```javascript
+import { extractClasses } from 'ignorant';
+
+const code = `
+class A {}
+class B extends A {}
+export class C extends B {}
+`;
+
+const classes = extractClasses(code);
+// Returns: [
+//   { name: 'A', code: 'class A {}', node: {...} },
+//   { name: 'B', code: 'class B extends A {}', node: {...} },
+//   { name: 'C', code: 'export class C extends B {}', node: {...} }
+// ]
+```
+
+## ⚙️ Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `excludeIntermediate` | boolean | `true` | Exclude intermediate classes that are extended by other classes |
+| `exportOnly` | boolean | `false` | Only compile exported classes |
+| `preserveComments` | boolean | `true` | Add comments indicating source class for inherited members |
+| `validateInheritance` | boolean | `true` | Validate inheritance chains for errors |
+
+## 🔍 How It Works
+
+### 1. **Parsing Phase**
+```javascript
+const ast = acorn.parse(code, {
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+    locations: true,
+    ranges: true
+});
+```
+
+### 2. **Class Registry Building**
+- Identifies all class declarations
+- Tracks export information
+- Builds inheritance graph
+- Categorizes members by type
+
+### 3. **Validation Phase**
+- Detects circular inheritance
+- Checks for missing parent classes
+- Validates member compatibility
+
+### 4. **Transformation Phase**
+- Collects members from entire inheritance chain
+- Resolves method overrides
+- Inlines constructor chains
+- Flattens class hierarchy
+
+### 5. **Code Generation**
+- Uses Astring to generate code from AST
+- Formats with Prettier
+- Preserves export declarations
+
+## 📊 Member Categories
+
+The compiler categorizes and orders members as follows:
+
+1. **Static Private Fields**
+2. **Static Public Fields**
+3. **Static Private Methods**
+4. **Static Public Methods**
+5. **Instance Private Fields**
+6. **Instance Public Fields**
+7. **Constructor** (inlined from entire chain)
+8. **Getters and Setters**
+9. **Instance Private Methods**
+10. **Instance Public Methods**
+
+## 🎯 Key Features
+
+### Constructor Chain Inlining
+
+The compiler properly inlines constructor chains by:
+- Collecting all constructors in inheritance order
+- Removing `super()` calls
+- Preserving all initialization logic
+- Maintaining proper execution order
+
+**Before:**
+```javascript
+class A {
+    constructor(x) {
+        this.x = x;
+    }
+}
+
+class B extends A {
+    constructor(x, y) {
+        super(x);
+        this.y = y;
+    }
 }
 ```
 
-### Available Functions
-
-- **`transform(code, options)`** - Main transformation function that flattens class hierarchies
-  - `code`: JavaScript source code as a string
-  - `options.excludeIntermediate`: (default: `true`) Exclude intermediate classes from output
-  - Returns: Transformed and formatted code
-
-- **`mergeClasses(code, options)`** - Merge class hierarchies without formatting
-  - Returns: Merged code without formatting
-
-- **`extractClasses(code)`** - Extract individual classes from transformed code
-  - Returns: Array of `{className, content}` objects
-
-- **`formatCode(code)`** - Format code using Prettier
-  - Returns: Formatted code with semicolons removed
-
-## Testing
-
-This package is tested using [Politician](https://github.com/catpea/politician), a bureaucratic test framework with 1980s government documentation aesthetics. Tests verify:
-
-- Constructor merging and execution order
-- Constructor parameter promotion
-- Method inheritance and override behavior
-- Member ordering and organization
-- Property and field support
-
-Run tests with:
-```bash
-npm test
+**After:**
+```javascript
+class B {
+    constructor(x, y) {
+        // from A constructor
+        this.x = x;
+        this.y = y;
+    }
+}
 ```
 
-## Benefits
+### Method Override Resolution
 
-- **Zero Runtime Dependencies**: Each class is entirely self-contained
-- **Simplified Distribution**: Ship individual class files without bundling parent classes
-- **Reduced Bundle Size**: Eliminate unused parent class members from final artifacts
-- **Enhanced Portability**: Classes can be copied between projects without dependency graphs
-- **Improved Debuggability**: All behavior is present in a single definition
-- **Constructor Intelligence**: Automatic merging of constructor chains with parameter promotion
-- **Override Preservation**: Correctly handles method overrides while inheriting non-overridden methods
+The compiler correctly identifies and resolves method overrides:
 
-## Use Cases
+```javascript
+class Animal {
+    makeSound() { return 'generic'; }
+}
 
-- **Library Distribution**: Ship individual, self-contained classes without requiring users to import entire inheritance chains
-- **Micro-Frontend Architecture**: Deploy standalone class modules that don't depend on shared parent classes
-- **Legacy Code Migration**: Flatten complex inheritance hierarchies into simpler, more maintainable structures
-- **Bundle Size Optimization**: Eliminate unused parent class methods from final bundles
-- **Code Portability**: Create classes that can be easily copied between projects without dependency graphs
+class Dog extends Animal {
+    makeSound() { return 'woof'; }  // Overrides Animal.makeSound
+}
+```
 
-## Design Philosophy
+### Private Member Handling
 
-`ignorant` embodies a pragmatic approach to code organization: maintain whatever class hierarchy aids comprehension during development, then flatten it for deployment. The system remains deliberately ignorant of OOP dogma, focusing solely on producing practical, standalone artifacts.
+Respects private fields and methods:
 
-After all, inheritance is really just copying code with extra steps. We're simply removing the steps.
+```javascript
+class Base {
+    #privateField = 0;
+    
+    #privateMethod() {
+        return this.#privateField;
+    }
+}
 
-## Security Considerations
+class Derived extends Base {
+    // Private members from Base are preserved
+}
+```
 
-The transformation process performs static code analysis and generation. No code is executed during transformation. Users should review generated output before deployment, as with any build tool.
+## 🧪 Testing
 
-## Contributing
+Run the comprehensive test suite:
 
-Contributions are welcome! This project is tested using the [Politician](https://github.com/catpea/politician) test framework. Please ensure all tests pass before submitting pull requests.
+```bash
+node test-class-compiler.js
+```
 
-## License
+This will run tests for:
+- Simple inheritance chains
+- Multiple inheritance branches
+- Getters and setters
+- Private members
+- Export modes
+- Class extraction
+- Performance benchmarks
 
-MIT - see LICENSE file for details
+## 🔧 API Reference
 
-## Author
+### ClassCompiler
 
-**catpea** - [GitHub](https://github.com/catpea)
+The main compiler class.
 
-## Links
+#### Constructor
 
-- **Repository**: https://github.com/catpea/ignorant
-- **npm Package**: https://www.npmjs.com/package/ignorant
-- **Test Framework**: https://github.com/catpea/politician
+```javascript
+new ClassCompiler(options)
+```
+
+#### Methods
+
+##### `compile(code)`
+Compiles the given code and returns a result object.
+
+**Returns:**
+```javascript
+{
+    code: string,              // Compiled code
+    errors: Array,             // Compilation errors/warnings
+    classMap: Map,             // Class information map
+    inheritanceGraph: Map      // Inheritance relationships
+}
+```
+
+##### `static extractClasses(code)`
+Extracts individual class definitions from code.
+
+**Returns:**
+```javascript
+[{
+    name: string,    // Class name
+    code: string,    // Class source code
+    node: object     // AST node
+}]
+```
+
+### Convenience Functions
+
+#### `compileClasses(code, options)`
+Quick compilation without creating a ClassCompiler instance.
+
+#### `extractClasses(code)`
+Quick class extraction without creating a ClassCompiler instance.
+
+## 🚨 Error Types
+
+The compiler reports the following error types:
+
+- `MISSING_PARENT`: Parent class not found
+- `CIRCULAR_INHERITANCE`: Circular inheritance detected
+- `COMPILATION_ERROR`: General compilation error
+
+Example error object:
+```javascript
+{
+    type: 'MISSING_PARENT',
+    class: 'Dog',
+    parent: 'Animal',
+    message: 'Class "Dog" extends "Animal" which is not defined'
+}
+```
+
+## 🎨 Code Quality
+
+- **Pure AST manipulation** - No string regex operations
+- **Type-safe operations** - Proper AST node handling
+- **Comprehensive error handling** - Graceful failure modes
+- **Well-documented** - Clear code comments and documentation
+- **Modular design** - Easy to extend and maintain
+
+ 
+### Migration Steps
+
+```javascript
+// v1.0
+import { mergeClasses, transform } from './old-version.js';
+const result = await transform(code);
+
+// v2.0
+import { compileClasses } from 'ignorant';
+const result = await compileClasses(code);
+console.log(result.code); // Access the compiled code
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! This is a clean, well-structured codebase designed for easy extension.
+
+## 📝 License
+
+MIT
+
+## 🙏 Acknowledgments
+
+Built with:
+- [Acorn](https://github.com/acornjs/acorn) - JavaScript parser
+- [Astring](https://github.com/davidbonnet/astring) - Code generator
+- [Prettier](https://prettier.io/) - Code formatter
 
 ---
 
-*"We choose to flatten the class hierarchy not because it is easy, but because inheritance is hard."*
+**Made with 🙃 for better JavaScript inheritance handling**
