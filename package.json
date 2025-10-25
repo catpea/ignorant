@@ -11,7 +11,7 @@
   "scripts": {
     "save": "git add .; git commit -m 'Updated Release'; npm version patch; npm publish; git push --follow-tags;",
     "test": "node --test",
-    "prepublishOnly": "npm test"
+    "zprepublishOnly": "npm test"
   },
   "keywords": [
     "inheritance",
