@@ -282,10 +282,18 @@ export class ClassCompiler {
             // Flatten the class
             const flattenedClass = this.flattenClass(classInfo);
 
+            // Determine if this class should be exported
+            // Export if:
+            // 1. Originally exported, OR
+            // 2. excludeIntermediate is true and this is a leaf class (no children)
+            const shouldExport = classInfo.exported ||
+                (this.options.excludeIntermediate && !this.inheritanceGraph.has(classInfo.name));
+
             // Wrap in export if needed
             let finalNode = flattenedClass;
-            if (classInfo.exported) {
-                if (classInfo.exportType === 'default') {
+            if (shouldExport) {
+                const exportType = classInfo.exportType || 'named';
+                if (exportType === 'default') {
                     finalNode = {
                         type: 'ExportDefaultDeclaration',
                         declaration: flattenedClass
@@ -336,6 +344,12 @@ export class ClassCompiler {
         // Collect all members from inheritance chain
         const allMembers = this.collectInheritedMembers(classInfo.name);
 
+        // Analyze methods to find super calls and build preservation map
+        const { superMethodMap, parentMethodsToKeep } = this.analyzeSuperCalls(allMembers, classInfo.name);
+
+        // Transform super calls in all methods
+        this.transformAllSuperCalls(allMembers, superMethodMap);
+
         // Build flattened constructor
         const flattenedConstructor = this.buildFlattenedConstructor(classInfo.name, allMembers);
 
@@ -374,6 +388,9 @@ export class ClassCompiler {
         // Add instance public methods
         classBody.push(...this.createMemberNodes(allMembers.instancePublicMethods, classInfo.name));
 
+        // Add preserved parent methods (renamed to avoid conflicts)
+        classBody.push(...parentMethodsToKeep);
+
         // Create the flattened class node
         return {
             type: 'ClassDeclaration',
@@ -390,7 +407,170 @@ export class ClassCompiler {
     }
 
     /**
+     * Analyze all methods to find super calls and determine which parent methods to preserve
+     * Returns: { superMethodMap, parentMethodsToKeep }
+     */
+    analyzeSuperCalls(allMembers, currentClassName) {
+        const superMethodMap = new Map(); // methodName -> _super_ClassName_methodName
+        const parentMethodsToKeep = []; // Array of renamed method nodes
+        const neededParentMethods = new Set(); // Set of method names that need parent preservation
+
+        // Categories to check for super calls
+        const methodCategories = [
+            'staticPrivateMethods', 'staticPublicMethods',
+            'instancePrivateMethods', 'instancePublicMethods',
+            'gettersSetters'
+        ];
+
+        // First pass: Find all super calls in all methods
+        for (const category of methodCategories) {
+            for (const memberEntry of allMembers[category]) {
+                const superCalls = this.findSuperCalls(memberEntry.member);
+                for (const superCall of superCalls) {
+                    if (superCall.memberName && !superCall.isComputed) {
+                        neededParentMethods.add(superCall.memberName);
+                    }
+                }
+            }
+        }
+
+        // Second pass: For each needed parent method, find its parent implementation
+        // and create a renamed version
+        for (const methodName of neededParentMethods) {
+            const parentImpl = this.findParentMethodImplementation(
+                currentClassName,
+                methodName,
+                allMembers,
+                methodCategories
+            );
+
+            if (parentImpl) {
+                const renamedMethodName = `_super_${parentImpl.fromClass}_${methodName}`;
+                superMethodMap.set(methodName, renamedMethodName);
+
+                // Create renamed method node
+                const renamedMethod = this.cloneNode(parentImpl.member);
+                renamedMethod.key = {
+                    type: 'Identifier',
+                    name: renamedMethodName
+                };
+
+                // Recursively transform any super calls in the parent method too
+                const parentSuperMap = this.buildParentSuperMap(
+                    parentImpl.fromClass,
+                    renamedMethod,
+                    methodCategories,
+                    allMembers
+                );
+                this.transformSuperCalls(renamedMethod, parentSuperMap);
+
+                // Add comment indicating this is a preserved parent method
+                if (this.options.preserveComments) {
+                    renamedMethod.leadingComments = [{
+                        type: 'Line',
+                        value: ` preserved from ${parentImpl.fromClass} for super calls`
+                    }];
+                }
+
+                parentMethodsToKeep.push(renamedMethod);
+            }
+        }
+
+        return { superMethodMap, parentMethodsToKeep };
+    }
+
+    /**
+     * Find the parent implementation of a method for a given class
+     * Uses method history to find the version that comes before the given class
+     */
+    findParentMethodImplementation(className, methodName, allMembers, methodCategories) {
+        // Search through method history to find parent versions
+        for (const category of methodCategories) {
+            // Build the member ID for this method
+            const testMember = allMembers[category].find(m =>
+                this.getMethodName(m.member) === methodName
+            );
+
+            if (!testMember) continue;
+
+            const historyKey = `${category}:${testMember.memberId}`;
+            const history = allMembers.methodHistory?.get(historyKey);
+
+            if (!history || history.length === 0) continue;
+
+            // Find the current class's index in history
+            const currentIndex = history.findIndex(h => h.fromClass === className);
+
+            if (currentIndex > 0) {
+                // Return the previous version (parent implementation)
+                return history[currentIndex - 1];
+            } else if (currentIndex === -1 && history.length > 0) {
+                // Current class doesn't have this method, return the most recent version
+                return history[history.length - 1];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get the method name from a method node
+     */
+    getMethodName(methodNode) {
+        if (methodNode.key?.type === 'Identifier') {
+            return methodNode.key.name;
+        } else if (methodNode.key?.type === 'PrivateIdentifier') {
+            return '#' + methodNode.key.name;
+        }
+        return null;
+    }
+
+    /**
+     * Build a super map for a parent method (to handle nested super calls)
+     */
+    buildParentSuperMap(parentClassName, parentMethod, methodCategories, allMembers) {
+        const map = new Map();
+        const superCalls = this.findSuperCalls(parentMethod);
+
+        for (const superCall of superCalls) {
+            if (superCall.memberName && !superCall.isComputed) {
+                const grandparentImpl = this.findParentMethodImplementation(
+                    parentClassName,
+                    superCall.memberName,
+                    allMembers,
+                    methodCategories
+                );
+
+                if (grandparentImpl) {
+                    const renamedName = `_super_${grandparentImpl.fromClass}_${superCall.memberName}`;
+                    map.set(superCall.memberName, renamedName);
+                }
+            }
+        }
+
+        return map;
+    }
+
+    /**
+     * Transform super calls in all methods in the member collection
+     */
+    transformAllSuperCalls(allMembers, superMethodMap) {
+        const methodCategories = [
+            'staticPrivateMethods', 'staticPublicMethods',
+            'instancePrivateMethods', 'instancePublicMethods',
+            'gettersSetters'
+        ];
+
+        for (const category of methodCategories) {
+            for (const memberEntry of allMembers[category]) {
+                this.transformSuperCalls(memberEntry.member, superMethodMap);
+            }
+        }
+    }
+
+    /**
      * Collect all members from the entire inheritance chain
+     * Also builds a method history map for super call resolution
      */
     collectInheritedMembers(className, visited = new Set()) {
         if (visited.has(className)) {
@@ -415,6 +595,9 @@ export class ClassCompiler {
 
         // Then, add/override with current class members
         this.mergeMembers(allMembers, classInfo.members, className);
+
+        // Build method history for super call resolution
+        allMembers.methodHistory = allMembers.methodHistory || new Map();
 
         return allMembers;
     }
@@ -442,8 +625,29 @@ export class ClassCompiler {
      * Merge members, handling overrides
      */
     mergeMembers(target, source, sourceClassName = null) {
+        // Initialize method history if not present
+        if (!target.methodHistory) {
+            target.methodHistory = new Map();
+        }
+
+        // Copy method history from source if it exists
+        if (source.methodHistory) {
+            for (const [key, value] of source.methodHistory) {
+                if (!target.methodHistory.has(key)) {
+                    target.methodHistory.set(key, []);
+                }
+                target.methodHistory.get(key).push(...value);
+            }
+        }
+
         // Handle constructor specially - we need the chain
-        if (source.constructor) {
+        // Check if source is a collection (has constructorChain) or raw members
+        if (source.constructorChain && source.constructorChain.length > 0) {
+            // Merging a collection - copy the entire chain
+            target.constructorChain.push(...source.constructorChain);
+            target.constructor = source.constructor;
+        } else if (source.constructor) {
+            // Raw constructor from categorizeMembers - wrap it
             target.constructorChain.push({
                 member: source.constructor,
                 fromClass: sourceClassName
@@ -489,6 +693,16 @@ export class ClassCompiler {
                     memberId
                 };
 
+                // Track in method history for super call resolution
+                const methodName = this.getMethodName(member);
+                if (methodName && this.isMethod(category)) {
+                    const historyKey = `${category}:${memberId}`;
+                    if (!target.methodHistory.has(historyKey)) {
+                        target.methodHistory.set(historyKey, []);
+                    }
+                    target.methodHistory.get(historyKey).push(memberEntry);
+                }
+
                 if (existingIndex !== -1) {
                     // Override existing member
                     target[category][existingIndex] = memberEntry;
@@ -498,6 +712,13 @@ export class ClassCompiler {
                 }
             }
         }
+    }
+
+    /**
+     * Check if a category is for methods (not fields)
+     */
+    isMethod(category) {
+        return category.includes('Methods') || category === 'gettersSetters';
     }
 
     /**
@@ -628,6 +849,93 @@ export class ClassCompiler {
      */
     cloneNode(node) {
         return JSON.parse(JSON.stringify(node));
+    }
+
+    /**
+     * Find all super method calls in a node
+     * Returns array of { memberName, isComputed, node }
+     */
+    findSuperCalls(node, results = []) {
+        if (!node || typeof node !== 'object') {
+            return results;
+        }
+
+        // Check if this is a super call: super.method() or super[expr]()
+        if (node.type === 'CallExpression' && node.callee?.type === 'MemberExpression') {
+            if (node.callee.object?.type === 'Super') {
+                const memberName = node.callee.computed
+                    ? null // Can't statically determine computed names
+                    : node.callee.property?.name;
+
+                results.push({
+                    memberName,
+                    isComputed: node.callee.computed,
+                    callNode: node
+                });
+            }
+        }
+
+        // Recursively search child nodes
+        for (const key in node) {
+            if (key === 'loc' || key === 'range' || key === 'start' || key === 'end') {
+                continue;
+            }
+            const value = node[key];
+            if (Array.isArray(value)) {
+                value.forEach(child => this.findSuperCalls(child, results));
+            } else if (value && typeof value === 'object') {
+                this.findSuperCalls(value, results);
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Transform super calls in a method to use renamed parent methods
+     * @param {Object} node - The AST node to transform
+     * @param {Map} superMethodMap - Map of methodName -> renamedMethodName
+     */
+    transformSuperCalls(node, superMethodMap) {
+        if (!node || typeof node !== 'object') {
+            return;
+        }
+
+        // Check if this is a super call: super.method()
+        if (node.type === 'CallExpression' &&
+            node.callee?.type === 'MemberExpression' &&
+            node.callee.object?.type === 'Super') {
+
+            if (!node.callee.computed && node.callee.property?.name) {
+                const methodName = node.callee.property.name;
+                const renamedMethod = superMethodMap.get(methodName);
+
+                if (renamedMethod) {
+                    // Transform super.method() to this._super_ClassName_method()
+                    node.callee.object = {
+                        type: 'ThisExpression'
+                    };
+                    node.callee.property = {
+                        type: 'Identifier',
+                        name: renamedMethod
+                    };
+                    node.callee.computed = false;
+                }
+            }
+        }
+
+        // Recursively transform child nodes
+        for (const key in node) {
+            if (key === 'loc' || key === 'range' || key === 'start' || key === 'end') {
+                continue;
+            }
+            const value = node[key];
+            if (Array.isArray(value)) {
+                value.forEach(child => this.transformSuperCalls(child, superMethodMap));
+            } else if (value && typeof value === 'object') {
+                this.transformSuperCalls(value, superMethodMap);
+            }
+        }
     }
 
     /**
