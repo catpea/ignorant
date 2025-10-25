@@ -25,7 +25,7 @@ export class ClassCompiler {
     constructor(options = {}) {
         this.options = {
             excludeIntermediate: true,
-            exportOnly: false,
+            exportOnly: true,
             preserveComments: true,
             validateInheritance: true,
             ...options
@@ -350,8 +350,11 @@ export class ClassCompiler {
         // Transform super calls in all methods
         this.transformAllSuperCalls(allMembers, superMethodMap);
 
-        // Build flattened constructor
-        const flattenedConstructor = this.buildFlattenedConstructor(classInfo.name, allMembers);
+        // Analyze constructors to find super() calls and build preserved constructors
+        const { superConstructorMap, parentConstructorsToKeep } = this.analyzeConstructorSuperCalls(allMembers, classInfo.name);
+
+        // Build final constructor with _super_ pattern
+        const finalConstructor = this.buildSuperPatternConstructor(classInfo.name, allMembers, superConstructorMap);
 
         // Build flattened class body
         const classBody = [];
@@ -375,8 +378,8 @@ export class ClassCompiler {
         classBody.push(...this.createMemberNodes(allMembers.instancePublicFields, classInfo.name));
 
         // Add constructor
-        if (flattenedConstructor) {
-            classBody.push(flattenedConstructor);
+        if (finalConstructor) {
+            classBody.push(finalConstructor);
         }
 
         // Add getters/setters
@@ -390,6 +393,9 @@ export class ClassCompiler {
 
         // Add preserved parent methods (renamed to avoid conflicts)
         classBody.push(...parentMethodsToKeep);
+
+        // Add preserved parent constructors (renamed to _super_ClassName_constructor)
+        classBody.push(...parentConstructorsToKeep);
 
         // Create the flattened class node
         return {
@@ -761,22 +767,86 @@ export class ClassCompiler {
     }
 
     /**
-     * Build a flattened constructor that inlines all parent constructors
+     * Analyze constructor super() calls and build preserved parent constructors
+     * Returns: { superConstructorMap, parentConstructorsToKeep }
      */
-    buildFlattenedConstructor(className, allMembers) {
+    analyzeConstructorSuperCalls(allMembers, currentClassName) {
+        const superConstructorMap = new Map(); // className -> _super_ClassName_constructor
+        const parentConstructorsToKeep = []; // Array of renamed constructor methods
+
+        if (!allMembers.constructor || !allMembers.constructorChain) {
+            return { superConstructorMap, parentConstructorsToKeep };
+        }
+
+        const constructorChain = allMembers.constructorChain;
+
+        // Build preserved constructors for all parents
+        // We need to preserve all constructors except the final one (current class)
+        for (let i = 0; i < constructorChain.length - 1; i++) {
+            const { member: constructor, fromClass } = constructorChain[i];
+            const renamedConstructorName = `_super_${fromClass}_constructor`;
+
+            // Store mapping for transformation
+            superConstructorMap.set(fromClass, renamedConstructorName);
+
+            // Clone the constructor and rename it to a regular method
+            const renamedConstructor = {
+                type: 'MethodDefinition',
+                key: {
+                    type: 'Identifier',
+                    name: renamedConstructorName
+                },
+                value: {
+                    type: 'FunctionExpression',
+                    id: null,
+                    params: this.cloneNode(constructor.value.params),
+                    body: this.cloneNode(constructor.value.body),
+                    generator: false,
+                    async: false
+                },
+                kind: 'method',
+                computed: false,
+                static: false
+            };
+
+            // Transform super() calls in this parent constructor
+            // Find which parent this constructor was calling
+            if (i > 0) {
+                const grandparentClass = constructorChain[i - 1].fromClass;
+                const grandparentConstructorName = `_super_${grandparentClass}_constructor`;
+                this.transformSuperConstructorCalls(renamedConstructor.value.body, grandparentConstructorName);
+            } else {
+                // This is the root constructor, just remove super() calls
+                this.removeSuperConstructorCalls(renamedConstructor.value.body);
+            }
+
+            // Add comment indicating this is a preserved parent constructor
+            if (this.options.preserveComments) {
+                renamedConstructor.leadingComments = [{
+                    type: 'Line',
+                    value: ` preserved from ${fromClass} constructor`
+                }];
+            }
+
+            parentConstructorsToKeep.push(renamedConstructor);
+        }
+
+        return { superConstructorMap, parentConstructorsToKeep };
+    }
+
+    /**
+     * Build the final constructor using _super_ pattern
+     */
+    buildSuperPatternConstructor(className, allMembers, superConstructorMap) {
         if (!allMembers.constructor) {
             return null;
         }
 
         const constructorChain = allMembers.constructorChain;
-
-        // Get the final constructor signature
         const finalConstructor = constructorChain[constructorChain.length - 1].member;
 
-        // Build the inlined body
-        const inlinedBody = this.inlineConstructorChain(constructorChain);
-
-        return {
+        // Clone the final constructor
+        const constructor = {
             type: 'MethodDefinition',
             key: {
                 type: 'Identifier',
@@ -786,10 +856,7 @@ export class ClassCompiler {
                 type: 'FunctionExpression',
                 id: null,
                 params: this.cloneNode(finalConstructor.value.params),
-                body: {
-                    type: 'BlockStatement',
-                    body: inlinedBody
-                },
+                body: this.cloneNode(finalConstructor.value.body),
                 generator: false,
                 async: false
             },
@@ -797,42 +864,62 @@ export class ClassCompiler {
             computed: false,
             static: false
         };
+
+        // Transform super() calls to this._super_ParentClass_constructor()
+        if (constructorChain.length > 1) {
+            const parentClass = constructorChain[constructorChain.length - 2].fromClass;
+            const parentConstructorName = superConstructorMap.get(parentClass);
+            if (parentConstructorName) {
+                this.transformSuperConstructorCalls(constructor.value.body, parentConstructorName);
+            }
+        } else {
+            // No parent, just remove any super() calls
+            this.removeSuperConstructorCalls(constructor.value.body);
+        }
+
+        return constructor;
     }
 
     /**
-     * Inline an entire constructor chain
+     * Transform super() calls in a constructor body to this._super_ClassName_constructor()
      */
-    inlineConstructorChain(constructorChain) {
-        const statements = [];
+    transformSuperConstructorCalls(body, parentConstructorName) {
+        if (!body || !body.body) return;
 
-        for (let i = 0; i < constructorChain.length; i++) {
-            const { member: constructor, fromClass } = constructorChain[i];
-            const body = constructor.value.body.body;
+        for (let i = 0; i < body.body.length; i++) {
+            const statement = body.body[i];
 
-            const isLast = i === constructorChain.length - 1;
-
-            for (const statement of body) {
-                // Skip super() calls - they're being inlined
-                if (this.isSuperCall(statement)) {
-                    continue;
-                }
-
-                // Clone and add the statement
-                const clonedStatement = this.cloneNode(statement);
-
-                // Add source comment if not the last constructor
-                if (!isLast && fromClass && this.options.preserveComments) {
-                    clonedStatement.leadingComments = [{
-                        type: 'Line',
-                        value: ` from ${fromClass} constructor`
-                    }];
-                }
-
-                statements.push(clonedStatement);
+            if (this.isSuperCall(statement)) {
+                // Transform super(...args) to this._super_ParentClass_constructor(...args)
+                body.body[i] = {
+                    type: 'ExpressionStatement',
+                    expression: {
+                        type: 'CallExpression',
+                        callee: {
+                            type: 'MemberExpression',
+                            object: {
+                                type: 'ThisExpression'
+                            },
+                            property: {
+                                type: 'Identifier',
+                                name: parentConstructorName
+                            },
+                            computed: false
+                        },
+                        arguments: statement.expression.arguments
+                    }
+                };
             }
         }
+    }
 
-        return statements;
+    /**
+     * Remove super() calls from constructor body (for root constructors)
+     */
+    removeSuperConstructorCalls(body) {
+        if (!body || !body.body) return;
+
+        body.body = body.body.filter(statement => !this.isSuperCall(statement));
     }
 
     /**
